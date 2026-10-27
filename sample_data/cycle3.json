@@ -1,0 +1,43 @@
+{
+  "user_id": "alice",
+  "cycle_id": 3,
+  "clock_date": "2026-10-28",
+  "messages": [
+    {
+      "message_id": "fx-m08",
+      "thread_id": "t-budget",
+      "from": "sam@example.com",
+      "to": "alice@example.com",
+      "subject": "Re: Budget report",
+      "date": "2026-10-28T08:10:00",
+      "body": "Hi Alice,\n\nReally sorry about the delay. Could I have until Thursday for the budget report?\n\nSam"
+    },
+    {
+      "message_id": "fx-m09",
+      "thread_id": "t-slides",
+      "from": "priya@example.com",
+      "to": "alice@example.com",
+      "subject": "Re: Slides for the workshop",
+      "date": "2026-10-28T09:20:00",
+      "body": "Hi Alice,\n\nThe slides are sent, you should have them now. Tell me if anything is missing.\n\nPriya"
+    },
+    {
+      "message_id": "fx-m10",
+      "thread_id": "t-figures",
+      "from": "taylor@example.com",
+      "to": "alice@example.com",
+      "subject": "Final figures",
+      "date": "2026-10-28T10:00:00",
+      "body": "Hi Alice,\n\nI'll send you the final figures by Thursday.\n\nTaylor"
+    },
+    {
+      "message_id": "fx-m11",
+      "thread_id": "t-figures",
+      "from": "morgan@example.com",
+      "to": "alice@example.com",
+      "subject": "Re: Final figures",
+      "date": "2026-10-28T10:45:00",
+      "body": "Hi Alice,\n\nFYI Taylor told me the figures will not be ready until Nov 3.\n\nMorgan"
+    }
+  ]
+}

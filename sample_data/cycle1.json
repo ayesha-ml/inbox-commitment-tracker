@@ -1,0 +1,43 @@
+{
+  "user_id": "alice",
+  "cycle_id": 1,
+  "clock_date": "2026-10-20",
+  "messages": [
+    {
+      "message_id": "fx-m01",
+      "thread_id": "t-budget",
+      "from": "sam@example.com",
+      "to": "alice@example.com",
+      "subject": "Budget report",
+      "date": "2026-10-20T09:15:00",
+      "body": "Hi Alice,\n\nI'll send you the budget report by Friday.\n\nThanks,\nSam"
+    },
+    {
+      "message_id": "fx-m02",
+      "thread_id": "t-slides",
+      "from": "priya@example.com",
+      "to": "alice@example.com",
+      "subject": "Slides for the workshop",
+      "date": "2026-10-20T10:02:00",
+      "body": "Hi Alice,\n\nI can probably get the slides over to you sometime next week, not sure yet.\n\nPriya"
+    },
+    {
+      "message_id": "fx-m03",
+      "thread_id": "t-review",
+      "from": "alice@example.com",
+      "to": "jordan@example.com",
+      "subject": "Draft review",
+      "date": "2026-10-20T11:30:00",
+      "body": "Hi Jordan,\n\nThanks for the draft. I'll review it by Thursday and send comments.\n\nAlice"
+    },
+    {
+      "message_id": "fx-m04",
+      "thread_id": "t-promo",
+      "from": "deals@shop.example",
+      "to": "alice@example.com",
+      "subject": "Weekly deals",
+      "date": "2026-10-20T12:00:00",
+      "body": "Big savings this week! Up to 50% off everything. Unsubscribe any time."
+    }
+  ]
+}

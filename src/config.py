@@ -17,3 +17,18 @@ MAX_REMINDERS_PER_COMMITMENT = int(os.getenv("MAX_REMINDERS", "2"))
 
 # Working-state checkpoints must stay bounded
 CHECKPOINT_MAX_CHARS = 20_000
+
+# The user's own address (used to tell "I owe this" from "they owe me")
+USER_EMAIL = os.getenv("USER_EMAIL", "alice@example.com")
+
+# Only these addresses may ever receive a reminder (enforced in code)
+ALLOWED_RECIPIENTS = {
+    a.strip().lower()
+    for a in os.getenv(
+        "ALLOWED_RECIPIENTS",
+        "sam@example.com,priya@example.com,taylor@example.com",
+    ).split(",")
+    if a.strip()
+}
+
+DUE_SOON_DAYS = int(os.getenv("DUE_SOON_DAYS", "1"))

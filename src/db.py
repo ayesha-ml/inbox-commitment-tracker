@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.config import CHECKPOINT_MAX_CHARS, DB_PATH, SCHEMA_PATH
-from src.utils import now_iso
+from src.utils import idempotency_key, now_iso
 
 
 class NotFoundError(LookupError):
@@ -263,3 +263,92 @@ def latest_checkpoint(conn, user_id: str) -> Optional[tuple[int, dict]]:
         (user_id,),
     ).fetchone()
     return (row["cycle_id"], json.loads(row["state_json"])) if row else None
+
+# reminders (draft / approval / send tracked separately)
+
+def get_reminders(conn, user_id: str, commitment_id: Optional[int] = None) -> list[dict]:
+    sql, params = "SELECT * FROM reminders WHERE user_id=?", [user_id]
+    if commitment_id is not None:
+        sql += " AND commitment_id=?"
+        params.append(commitment_id)
+    return [dict(r) for r in conn.execute(sql + " ORDER BY reminder_id", params)]
+
+
+def create_reminder(conn, user_id: str, commitment_id: int, deadline_version: int,
+                    recipient: str, draft_body: str) -> tuple[dict, bool]:
+    """Returns (reminder, created). Retry-safe: if a PENDING draft already exists for
+    this commitment+deadline version, it is returned instead of making a second one.
+    The UNIQUE idempotency_key is a second line of defence."""
+    with conn:
+        if not conn.execute(
+                "SELECT 1 FROM commitments WHERE commitment_id=? AND user_id=?",
+                (commitment_id, user_id)).fetchone():
+            raise NotFoundError(f"commitment {commitment_id} not found for {user_id}")
+
+        pending = conn.execute(
+            """SELECT * FROM reminders WHERE user_id=? AND commitment_id=?
+               AND deadline_version=? AND approval_state='PENDING'""",
+            (user_id, commitment_id, deadline_version)).fetchone()
+        if pending:
+            return dict(pending), False
+
+        n = conn.execute(
+            """SELECT COALESCE(MAX(reminder_n),0)+1 FROM reminders
+               WHERE user_id=? AND commitment_id=? AND deadline_version=?""",
+            (user_id, commitment_id, deadline_version)).fetchone()[0]
+        key = idempotency_key(user_id, commitment_id, deadline_version, n)
+        ts = now_iso()
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO reminders
+               (user_id, commitment_id, deadline_version, reminder_n, recipient,
+                draft_body, idempotency_key, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (user_id, commitment_id, deadline_version, n, recipient,
+             draft_body, key, ts, ts))
+        row = conn.execute("SELECT * FROM reminders WHERE idempotency_key=?", (key,)).fetchone()
+        return dict(row), cur.rowcount == 1
+
+
+def set_approval(conn, user_id: str, reminder_id: int, state: str) -> None:
+    if state not in ("APPROVED", "REJECTED"):
+        raise ValueError("state must be APPROVED or REJECTED")
+    with conn:
+        cur = conn.execute(
+            """UPDATE reminders SET approval_state=?, updated_at=?
+               WHERE reminder_id=? AND user_id=? AND approval_state='PENDING'""",
+            (state, now_iso(), reminder_id, user_id))
+        if cur.rowcount == 0:
+            raise NotFoundError(f"no pending reminder {reminder_id} for {user_id}")
+
+
+def mark_send_result(conn, user_id: str, reminder_id: int, ok: bool,
+                     error: Optional[str] = None) -> bool:
+    """Record the outcome of a real send. Returns False if already SENT
+    (a retry after success is a no-op, so no duplicate side effects)."""
+    with conn:
+        row = conn.execute(
+            "SELECT approval_state, send_state FROM reminders WHERE reminder_id=? AND user_id=?",
+            (reminder_id, user_id)).fetchone()
+        if row is None:
+            raise NotFoundError(f"reminder {reminder_id} not found for {user_id}")
+        if row["approval_state"] != "APPROVED":
+            raise PermissionError("reminder was not approved")
+        if row["send_state"] == "SENT":
+            return False
+        conn.execute(
+            "UPDATE reminders SET send_state=?, send_error=?, updated_at=? WHERE reminder_id=?",
+            ("SENT" if ok else "FAILED", None if ok else error, now_iso(), reminder_id))
+        return True
+
+
+def reject_stale_reminders(conn, user_id: str, commitment_id: int,
+                           current_version: int) -> int:
+    """After a deadline correction, unsent drafts for older versions are void."""
+    with conn:
+        cur = conn.execute(
+            """UPDATE reminders SET approval_state='REJECTED',
+                      send_error='superseded by newer deadline', updated_at=?
+               WHERE user_id=? AND commitment_id=? AND deadline_version<?
+                 AND approval_state IN ('PENDING','APPROVED') AND send_state!='SENT'""",
+            (now_iso(), user_id, commitment_id, current_version))
+        return cur.rowcount
