@@ -32,3 +32,8 @@ ALLOWED_RECIPIENTS = {
 }
 
 DUE_SOON_DAYS = int(os.getenv("DUE_SOON_DAYS", "1"))
+
+# LLM Provider Configuration (Ollama local by default)
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")  
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")      
