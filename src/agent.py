@@ -12,7 +12,7 @@ def process_cycle(conn, user_id: str, cycle_data: Dict[str, Any], *,
     cycle_id = cycle_data["cycle_id"]
     clock_date = date.fromisoformat(cycle_data["clock_date"])
     
-    # Set simulated clock date
+    # updating clock date
     clock.set_today(conn, user_id, cycle_data["clock_date"])
     
     results = []
@@ -21,7 +21,7 @@ def process_cycle(conn, user_id: str, cycle_data: Dict[str, Any], *,
         mid = msg["message_id"]
         b_hash = body_hash(msg["body"])
         
-        # Step 1: Deterministic Content Deduplication Check
+        # checking for duplicate message
         save_status = db.save_message(
             conn, user_id, mid, b_hash,
             source="fixture_export",
@@ -38,7 +38,7 @@ def process_cycle(conn, user_id: str, cycle_data: Dict[str, Any], *,
             results.append({"message_id": mid, "status": save_status, "action": "SKIP"})
             continue
         
-        # Step 2: LLM Intent Classification
+        # classifying email intent with llm
         llm_out, latency, t_in, t_out = classify_message(msg, use_mock=use_mock)
         label = llm_out.get("label", "NO_COMMITMENT")
         db.set_message_label(conn, user_id, mid, label)
@@ -49,16 +49,16 @@ def process_cycle(conn, user_id: str, cycle_data: Dict[str, Any], *,
             cycle_id=cycle_id, latency_ms=latency, tokens_in=t_in, tokens_out=t_out
         )
         
-        # Step 3: Date Resolution via Deterministic Tool
+        # resolving deadline date
         deadline_iso = tools.resolve_deadline(llm_out.get("deadline_phrase"), clock_date)
         
-        # Step 4: Apply State Changes (If Memory Enabled)
+        # saving memory state
         if memory_enabled:
             _apply_state_change(conn, user_id, msg, llm_out, deadline_iso, mid)
             
         results.append({"message_id": mid, "label": label, "deadline_iso": deadline_iso})
 
-    # Step 5: Evaluate Next Actions for All Open Commitments
+    # checking open commitments for next actions
     open_commitments = db.list_commitments(conn, user_id, statuses=("OPEN", "NEEDS_REVIEW"))
     actions = []
     
@@ -71,7 +71,19 @@ def process_cycle(conn, user_id: str, cycle_data: Dict[str, Any], *,
         )
         actions.append({"commitment_id": c["commitment_id"], "description": c["description"], "action": dec.action, "reason": dec.reason})
 
-    # Save bounded working checkpoint
+        # creating reminder draft when recommended
+        if dec.action == "DRAFT_REMINDER" and memory_enabled:
+            draft_text = tools.draft_reminder_text(
+                {"description": c["description"], "deadline": c["deadline"]},
+                clock_date
+            )
+            key = f"{user_id}:{c['commitment_id']}:v{c['version']}:r1"
+            db.create_reminder(
+                conn, user_id, c["commitment_id"],
+                c["owner"], draft_text, key
+            )
+
+    # saving current cycle checkpoint
     checkpoint_state = {"cycle_id": cycle_id, "processed_count": len(results), "open_count": len(open_commitments)}
     db.save_checkpoint(conn, user_id, cycle_id, checkpoint_state)
     
@@ -101,13 +113,13 @@ def _apply_state_change(conn, user_id: str, msg: Dict[str, Any], llm_out: Dict[s
         
         if matched:
             c = matched[0]
-            # Hearsay Check: Revision only allowed if sender is owner or user
+            # checking sender permission for date changes
             if sender in (policy.norm_addr(c["owner"]), policy.norm_addr(config.USER_EMAIL)):
                 new_v = db.supersede_deadline(conn, user_id, c["commitment_id"], deadline_iso, message_id, evidence_quote=llm_out.get("evidence_quote"))
                 if new_v:
                     db.reject_stale_reminders(conn, user_id, c["commitment_id"], new_v)
             else:
-                # Flag hearsay / unauthorized change attempt as NEEDS_REVIEW
+                # flagging unauthorized change as needs review
                 db.set_status(conn, user_id, c["commitment_id"], "NEEDS_REVIEW")
                 
     elif label == "FULFILLED":
